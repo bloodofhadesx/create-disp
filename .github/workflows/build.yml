@@ -1,0 +1,42 @@
+name: Build create-disp .deb
+
+on:
+  push:
+    branches: [lindroid-screen-capture, lindroid-dmabuf]
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04-arm
+    container:
+      image: debian:trixie
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Fix changelog
+        run: |
+          sed -i 's/002$/ +0000/' debian/changelog
+
+      - name: Add Lindroid repo for libhybris
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq curl gnupg
+          echo "deb [signed-by=/usr/share/keyrings/lindroid.gpg] https://lindroid.linux-on-droid.com/debian trixie main" > /etc/apt/sources.list.d/lindroid.list
+          curl -fsSL https://lindroid.linux-on-droid.com/lindroid.gpg -o /usr/share/keyrings/lindroid.gpg
+          apt-get update -qq
+
+      - name: Install build dependencies
+        run: |
+          apt-get install -y -qq build-essential devscripts equivs cmake g++ \
+            libdrm-dev pkg-config libsystemd-dev debhelper-compat 2>&1 | tail -5
+          apt-get build-dep -y -qq . || mk-build-deps -i -t 'apt-get -y -o Debug::pkgProblemResolver=yes --no-install-recommends' || true
+
+      - name: Build binary package
+        run: |
+          dpkg-buildpackage -b -uc -us -j$(nproc) 2>&1 | tail -20
+
+      - name: Upload .deb
+        uses: actions/upload-artifact@v4
+        with:
+          name: create-disp-deb
+          path: ../*.deb
